@@ -45,7 +45,7 @@ warnings.filterwarnings("ignore")
 # ---------------------------------------------------------------------------
 # train_epoch — 训练一个 epoch
 # ---------------------------------------------------------------------------
-def train_epoch(epoch, loader, iters, start_step=0, wandb=None):
+def train_epoch(epoch, loader, iters, start_step=0, wandb=None, val_loader=None):
     start_time = time.time()
 
     for step, (input_ids, labels, attention_mask) in enumerate(
@@ -94,6 +94,28 @@ def train_epoch(epoch, loader, iters, start_step=0, wandb=None):
                 wandb.log(
                     {"loss": current_loss, "lr": current_lr, "epoch_time": eta_min}
                 )
+
+            # 验证集评估
+            if val_loader is not None:
+                model.eval()
+                total_val_loss = 0.0
+                val_steps = 0
+                with torch.no_grad():
+                    for val_input_ids, val_labels, val_mask in val_loader:
+                        val_input_ids = val_input_ids.to(args.device)
+                        val_labels = val_labels.to(args.device)
+                        val_mask = val_mask.to(args.device)
+                        with autocast_ctx:
+                            val_res = model(val_input_ids, labels=val_labels, attention_mask=val_mask)
+                        total_val_loss += (val_res.loss + val_res.aux_loss).item()
+                        val_steps += 1
+                        if val_steps >= 5:
+                            break
+                avg_val = total_val_loss / max(val_steps, 1)
+                import math as _math
+                val_ppl = _math.exp(avg_val)
+                Logger(f"  >>> Val Loss: {avg_val:.4f} | Val PPL: {val_ppl:.2f}")
+                model.train()
 
         # 保存 checkpoint
         if (step % args.save_interval == 0 or step == iters) and is_main_process():
@@ -218,6 +240,19 @@ if __name__ == "__main__":
 
     train_ds = PretrainDataset(args.data_path, tokenizer, max_length=args.max_seq_len)
 
+    # 9:1 分割训练/验证集
+    n_train = int(0.9 * len(train_ds))
+    n_val = len(train_ds) - n_train
+    val_ds = None
+    val_loader = None
+    if n_val > 0:
+        train_ds, val_ds = torch.utils.data.random_split(train_ds, [n_train, n_val])
+        val_loader = DataLoader(
+            val_ds, batch_size=args.batch_size, shuffle=False,
+            num_workers=args.num_workers, pin_memory=True,
+        )
+        Logger(f"数据划分: train={n_train}, val={n_val}")
+
     train_sampler = DistributedSampler(train_ds) if dist.is_initialized() else None
 
     scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype == "float16"))
@@ -250,7 +285,7 @@ if __name__ == "__main__":
                 train_ds, batch_sampler=batch_sampler, num_workers=args.num_workers, pin_memory=True
             )
             Logger(f"Epoch [{epoch+1}/{args.epochs}]: 跳过前 {start_step} 个 step，从 step {start_step+1} 开始")
-            train_epoch(epoch, loader, len(loader) + start_step, start_step, wandb)
+            train_epoch(epoch, loader, len(loader) + start_step, start_step, wandb, val_loader)
         else:
             loader = DataLoader(
                 train_ds,
@@ -260,6 +295,6 @@ if __name__ == "__main__":
                 num_workers=args.num_workers,
                 pin_memory=True,
             )
-            train_epoch(epoch, loader, len(loader), 0, wandb)
+            train_epoch(epoch, loader, len(loader), 0, wandb, val_loader)
 
     Logger("Training finished!")

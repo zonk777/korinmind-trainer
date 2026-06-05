@@ -116,13 +116,14 @@ def main():
     results.append(r)
 
     # =====================================================================
-    # 实验 2：MHA (8Q/8KV) vs GQA (8Q/2KV)
+    # 实验 2：MHA (4Q/4KV) vs GQA (4Q/2KV)
     # =====================================================================
+    # 注：tiny 模型使用 4 个 attention heads，MHA 即 4Q/4KV
     print("\n" + "=" * 60)
-    print("实验 2: MHA — 8 Q heads + 8 KV heads (vs GQA 8/2)")
+    print("实验 2: MHA — 4 Q heads + 4 KV heads (vs GQA 4/2)")
     print("=" * 60)
     setup_seed(42)
-    mha_model = build_model(num_key_value_heads=4)  # 4 KV heads (matching 4 Q heads = MHA)
+    mha_model = build_model(num_key_value_heads=4)  # 与 num_attention_heads=4 一致 = MHA
     r = train_one_model("MHA (4KV)", mha_model, device, dtype)
     results.append(r)
 

@@ -157,6 +157,11 @@ class SFTDataset(Dataset):
         4. 将 [start, end+eos_len) 区间设为真实 token id
         """
         labels = [-100] * len(input_ids)
+
+        # 校验：防止 bos_id/eos_id 为空时死循环
+        if not self.bos_id or not self.eos_id:
+            return labels
+
         i = 0
         while i < len(input_ids):
             if input_ids[i : i + len(self.bos_id)] == self.bos_id:

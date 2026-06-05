@@ -150,7 +150,7 @@ def lm_checkpoint(
     else:
         # ── 加载模式 ──
         if os.path.exists(resume_path):
-            ckp_data = torch.load(resume_path, map_location="cpu")
+            ckp_data = torch.load(resume_path, map_location="cpu", weights_only=True)
             saved_ws = ckp_data.get("world_size", 1)
             current_ws = dist.get_world_size() if dist.is_initialized() else 1
 
@@ -198,7 +198,14 @@ def init_model(
             f"{save_dir}/{from_weight}_{lm_config.hidden_size}{moe_suffix}.pth"
         )
 
-        weights = torch.load(weight_path, map_location=device)
+        if not os.path.exists(weight_path):
+            raise FileNotFoundError(
+                f"权重文件不存在: {weight_path}\n"
+                f"请确认 {save_dir}/ 目录下有对应的权重文件，"
+                f"或使用 --from_weight none 从零开始训练。"
+            )
+
+        weights = torch.load(weight_path, map_location=device, weights_only=True)
         model.load_state_dict(weights, strict=False)
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

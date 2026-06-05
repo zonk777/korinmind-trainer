@@ -715,7 +715,10 @@ class KorinMindModel(nn.Module):
 
         # 兼容 HuggingFace DynamicCache
         if hasattr(past_key_values, "layers"):
-            past_key_values = None
+            if hasattr(past_key_values, "to_legacy_cache"):
+                past_key_values = past_key_values.to_legacy_cache()
+            else:
+                past_key_values = None
 
         past_key_values = past_key_values or [None] * len(self.layers)
 
