@@ -317,6 +317,47 @@ def test_inference():
 
 
 # ============================================================================
+# 5b. KorinMind 自身模型推理
+# ============================================================================
+def test_korinmind_inference():
+    header("5b. KorinMind 自身模型推理")
+
+    from model.model import KorinMindConfig, KorinMindForCausalLM
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained("model")
+    config = KorinMindConfig()
+    model = KorinMindForCausalLM(config)
+
+    # 尝试加载预训练权重
+    weight_path = "out/pretrain_full_512.pth"
+    if not os.path.exists(weight_path):
+        print("  [SKIP] pretrain_full_512.pth 不存在")
+        return
+
+    weights = torch.load(weight_path, map_location="cpu", weights_only=True)
+    model.load_state_dict(weights, strict=False)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = model.to(device)
+    model.eval()
+
+    # 基本续写能力
+    prompt = "人工智能是"
+    inputs = tokenizer(prompt, return_tensors="pt").to(device)
+    with torch.no_grad():
+        out = model.generate(
+            **inputs, max_new_tokens=20, do_sample=False,
+            pad_token_id=0, eos_token_id=2
+        )
+    resp = tokenizer.decode(out[0], skip_special_tokens=True)
+    test("KorinMind 续写非空", len(resp) > len(prompt))
+    test("KorinMind 输出无 NaN", not torch.isnan(out).any())
+    print(f"    Prompt: {prompt}")
+    print(f"    Output: {resp[:100]}")
+
+
+# ============================================================================
 # 6. Web Demo 导入测试
 # ============================================================================
 def test_web_demo():
@@ -359,6 +400,7 @@ if __name__ == "__main__":
     test_lora()
     test_datasets()
     test_inference()
+    test_korinmind_inference()
     test_web_demo()
     test_ablation()
 

@@ -212,12 +212,14 @@ def main():
                         all_ids.append(gen_ids)
             model.train()
 
-            # 计算 advantages（全局 baseline，避免均值归零）
+            # 计算 advantages（组内归一化 — GRPO 的核心）
             rewards_t = torch.tensor(all_rewards, device=device).view(B, args.num_gen)
-            baseline = rewards_t.mean()           # 全局均值作为 baseline
-            std_all = rewards_t.std(unbiased=False) + 1e-4
-            advantages = ((rewards_t - baseline) / std_all).view(-1)
-            # 高于平均 → 正 advantage；低于平均 → 负 advantage
+            advantages = torch.zeros_like(rewards_t)
+            for i in range(B):
+                group_mean = rewards_t[i].mean()
+                group_std = rewards_t[i].std(unbiased=False) + 1e-4
+                advantages[i] = (rewards_t[i] - group_mean) / group_std
+            advantages = advantages.view(-1)
 
             # Pad sequences 对齐
             max_len = max(ids.shape[0] for ids in all_ids)

@@ -77,6 +77,7 @@ def apply_lora(model: nn.Module, rank: int = 8, alpha: float = 16.0):
 
             # 保存原始 forward，用新 forward 替换
             original_forward = module.forward
+            module._original_forward = original_forward
 
             def make_forward(orig_forward, lora_module):
                 def forward_with_lora(x):

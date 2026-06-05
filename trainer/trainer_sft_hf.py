@@ -83,7 +83,6 @@ def main():
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
-                optimizer.zero_grad(set_to_none=True)
 
             global_step += 1
             epoch_loss += loss.item() * args.accumulation
