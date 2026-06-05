@@ -189,14 +189,19 @@ def main():
             all_ids = []
             all_masks = []
 
-            # 生成 N 个回答
+            # 生成 N 个回答（批量 tokenize + 逐 prompt 生成）
             model.eval()
             with torch.no_grad():
-                for p in prompts:
-                    inputs = tokenizer(p, return_tensors="pt").to(device)
+                batch_inputs = tokenizer(
+                    prompts, return_tensors="pt", padding=True, truncation=True,
+                    max_length=args.max_gen_len,
+                ).to(device)
+                for b_idx in range(B):
+                    single_input = {k: v[b_idx:b_idx+1] for k, v in batch_inputs.items()}
+                    input_len = single_input["input_ids"].shape[1]
                     out = model.generate(
-                        **inputs, max_new_tokens=args.max_gen_len, do_sample=True,
-                        temperature=0.8, top_p=0.9, top_k=50,
+                        **single_input, max_new_tokens=args.max_gen_len,
+                        do_sample=True, temperature=0.8, top_p=0.9, top_k=50,
                         num_return_sequences=args.num_gen,
                         pad_token_id=tokenizer.pad_token_id,
                         eos_token_id=tokenizer.eos_token_id,
@@ -204,7 +209,7 @@ def main():
                     for i in range(args.num_gen):
                         gen_ids = out[i]
                         resp = tokenizer.decode(
-                            gen_ids[inputs["input_ids"].shape[1]:], skip_special_tokens=True
+                            gen_ids[input_len:], skip_special_tokens=True
                         )
                         r = rule_reward(resp)
                         all_responses.append(resp)

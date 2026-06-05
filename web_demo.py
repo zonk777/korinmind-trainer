@@ -69,7 +69,23 @@ def load_model(model_type: str, weight_name: str = None, lora_path: str = None):
         config = KorinMindConfig()
         model = KorinMindForCausalLM(config)
 
-        weight_path = f"out/{weight_name}_512.pth"
+        # 尝试多个可能的权重路径
+        import glob as _glob
+        candidates = [
+            f"out/{weight_name}.pth",
+            f"out/{weight_name}_512.pth",
+        ] + _glob.glob(f"out/{weight_name}*.pth")
+        weight_path = None
+        for p in candidates:
+            if os.path.exists(p):
+                weight_path = p
+                break
+        if weight_path is None:
+            available = _glob.glob("out/*.pth")
+            raise FileNotFoundError(
+                f"找不到权重文件，尝试过: {candidates}\n"
+                f"out/ 目录下可用: {available}"
+            )
         weights = torch.load(weight_path, map_location="cpu", weights_only=True)
         model.load_state_dict(weights, strict=False)
 
@@ -103,23 +119,32 @@ def main():
     st.title("KorinMind Chat")
     st.caption("从零训练的 26M 参数中文大语言模型")
 
-    # 解析命令行参数
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="hf", choices=MODEL_CHOICES, help="hf=MiniMind2, local=KorinMind")
-    parser.add_argument("--weight", default="pretrain_full", type=str, help="本地权重名")
-    parser.add_argument("--lora-path", default=None, type=str)
-    try:
-        args = parser.parse_args(sys.argv[sys.argv.index("--") + 1 :])
-    except (ValueError, IndexError):
-        args = parser.parse_args([])
+    # 解析参数：优先用 URL query params（Streamlit 推荐），命令行兜底
+    model_type = st.query_params.get("model", "hf")
+    weight_name = st.query_params.get("weight", "pretrain_full")
+    lora_path = st.query_params.get("lora_path", None)
+
+    if not st.query_params:
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--model", default="hf", choices=MODEL_CHOICES)
+        parser.add_argument("--weight", default="pretrain_full", type=str)
+        parser.add_argument("--lora-path", default=None, type=str)
+        try:
+            if "--" in sys.argv:
+                args = parser.parse_args(sys.argv[sys.argv.index("--") + 1 :])
+                model_type = args.model
+                weight_name = args.weight
+                lora_path = args.lora_path
+        except (ValueError, IndexError):
+            pass
 
     @st.cache_resource
     def get_model(model_type, weight_name, lora_path):
         return load_model(model_type, weight_name, lora_path)
 
     with st.spinner("正在加载模型..."):
-        model, tokenizer, total_params = get_model(args.model, args.weight, args.lora_path)
-    st.success(f"模型已就绪：{total_params:.2f}M 参数 | 来源：{'MiniMind2-Small' if args.model == 'hf' else 'KorinMind'}")
+        model, tokenizer, total_params = get_model(model_type, weight_name, lora_path)
+    st.success(f"模型已就绪：{total_params:.2f}M 参数 | 来源：{'MiniMind2-Small' if model_type == 'hf' else 'KorinMind'}")
 
     # 聊天历史
     if "messages" not in st.session_state:

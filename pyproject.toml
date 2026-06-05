@@ -1,12 +1,26 @@
 [project]
 name = "korinmind"
 version = "0.1.0"
-description = "Add your description here"
+description = "从零制作的轻量级中文大语言模型"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = [
-    "numpy>=2.3.4",
-    "pandas>=2.3.3",
-    "torch>=2.9.0",
-    "transformers>=4.57.1",
+    "numpy>=2.0",
+    "torch>=2.0",
+    "transformers>=4.45",
+]
+
+[project.optional-dependencies]
+train = [
+    "datasets>=3.0",
+    "swanlab>=0.3",
+]
+demo = [
+    "streamlit>=1.28",
+]
+dev = [
+    "pytest>=8.0",
+]
+all = [
+    "korinmind[train,demo,dev]",
 ]

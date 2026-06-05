@@ -753,14 +753,10 @@ class KorinMindModel(nn.Module):
         hidden_states = self.norm(hidden_states)
 
         # 汇总所有 MoE 层的辅助损失
-        aux_loss = sum(
-            [
-                layer.mlp.aux_loss
-                for layer in self.layers
-                if isinstance(layer.mlp, MoEFeedForward)
-            ],
-            hidden_states.new_zeros(1).squeeze(),
-        )
+        aux_loss = hidden_states.new_zeros(1).squeeze()
+        for layer in self.layers:
+            if isinstance(layer.mlp, MoEFeedForward) and hasattr(layer.mlp, "aux_loss"):
+                aux_loss = aux_loss + layer.mlp.aux_loss
 
         return hidden_states, presents, aux_loss
 
