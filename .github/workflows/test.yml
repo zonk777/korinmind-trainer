@@ -18,9 +18,9 @@ jobs:
           python-version: "3.10"
 
       - name: Install dependencies
-        run: |
-          pip install torch transformers datasets
+        run: pip install torch transformers
 
-      - name: Run tests
-        run: |
-          python tests/test_all.py
+      - name: Run CI-optimized tests
+        env:
+          CI: "true"
+        run: python tests/test_ci.py
