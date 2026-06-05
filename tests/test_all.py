@@ -356,6 +356,33 @@ def test_korinmind_inference():
     print(f"    Prompt: {prompt}")
     print(f"    Output: {resp[:100]}")
 
+    # SFT 权重对话测试
+    sft_path = "out/full_sft_512.pth"
+    if os.path.exists(sft_path):
+        model2 = KorinMindForCausalLM(config)
+        sft_weights = torch.load(sft_path, map_location="cpu", weights_only=True)
+        model2.load_state_dict(sft_weights, strict=False)
+        model2 = model2.to(device)
+        model2.eval()
+        msgs = [{"role": "user", "content": "你好"}]
+        chat_prompt = tokenizer.apply_chat_template(
+            msgs, tokenize=False, add_generation_prompt=True
+        )
+        inputs2 = tokenizer(chat_prompt, return_tensors="pt").to(device)
+        with torch.no_grad():
+            out2 = model2.generate(
+                **inputs2, max_new_tokens=30, do_sample=False,
+                pad_token_id=0, eos_token_id=2
+            )
+        resp2 = tokenizer.decode(
+            out2[0, inputs2["input_ids"].shape[1]:], skip_special_tokens=True
+        )
+        test("KorinMind SFT 对话非空", len(resp2.strip()) > 0)
+        print(f"    Q: 你好")
+        print(f"    A: {resp2[:80]}")
+    else:
+        print("  [SKIP] full_sft_512.pth 不存在")
+
 
 # ============================================================================
 # 6. Web Demo 导入测试

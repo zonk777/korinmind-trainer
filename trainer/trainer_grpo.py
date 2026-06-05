@@ -150,6 +150,7 @@ def main():
     parser.add_argument("--save_interval", type=int, default=50)
     parser.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--from_weight", default="sft_hf_5000", help="SFT 权重作为起点")
+    parser.add_argument("--use_korinmind", action="store_true", help="使用 KorinMind 模型（而非 MiniMind2）")
     args = parser.parse_args()
 
     setup_seed(42)
@@ -157,19 +158,40 @@ def main():
 
     # ====== 1. 加载模型和 tokenizer ======
     Logger("Loading model...")
-    tokenizer = AutoTokenizer.from_pretrained("jingyaogong/minimind2-small", local_files_only=True)
 
-    model = AutoModelForCausalLM.from_pretrained("jingyaogong/minimind2-small", local_files_only=True)
-    model = model.float().to(device)
-    model.train()
+    if args.use_korinmind:
+        from model.model import KorinMindConfig, KorinMindForCausalLM
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained("model")
+        config = KorinMindConfig()
+
+        model = KorinMindForCausalLM(config)
+        weights = torch.load(f"out/{args.from_weight}_512.pth", map_location=device, weights_only=True)
+        model.load_state_dict(weights, strict=False)
+        model = model.float().to(device)
+        model.train()
+
+        ref_model = KorinMindForCausalLM(config)
+        ref_weights = torch.load(f"out/{args.from_weight}_512.pth", map_location=device, weights_only=True)
+        ref_model.load_state_dict(ref_weights, strict=False)
+        ref_model = ref_model.float().to(device)
+        ref_model.eval()
+        for p in ref_model.parameters():
+            p.requires_grad = False
+    else:
+        tokenizer = AutoTokenizer.from_pretrained("jingyaogong/minimind2-small", local_files_only=True)
+        model = AutoModelForCausalLM.from_pretrained("jingyaogong/minimind2-small", local_files_only=True)
+        model = model.float().to(device)
+        model.train()
+
+        ref_model = AutoModelForCausalLM.from_pretrained("jingyaogong/minimind2-small", local_files_only=True)
+        ref_model = ref_model.float().to(device)
+        ref_model.eval()
+        for p in ref_model.parameters():
+            p.requires_grad = False
+
     Logger(f"Policy model: {sum(p.numel()/1e6 for p in model.parameters()):.2f}M params")
-
-    # 参考模型（冻结）
-    ref_model = AutoModelForCausalLM.from_pretrained("jingyaogong/minimind2-small", local_files_only=True)
-    ref_model = ref_model.float().to(device)
-    ref_model.eval()
-    for p in ref_model.parameters():
-        p.requires_grad = False
 
     # ====== 2. 数据 ======
     ds = GRPODataset(args.data_path, tokenizer)

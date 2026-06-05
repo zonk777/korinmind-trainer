@@ -39,7 +39,7 @@ from trainer.trainer_untils import (
 warnings.filterwarnings("ignore")
 
 
-def train_epoch(epoch, loader, iters, start_step=0, wandb=None):
+def train_epoch(epoch, loader, iters, start_step=0, wandb=None, val_loader=None):
     start_time = time.time()
 
     for step, (input_ids, labels, attention_mask) in enumerate(
@@ -80,6 +80,30 @@ def train_epoch(epoch, loader, iters, start_step=0, wandb=None):
 
             if wandb:
                 wandb.log({"loss": current_loss, "lr": current_lr})
+
+            # 验证集评估
+            if val_loader is not None:
+                model.eval()
+                total_val_loss = 0.0
+                val_steps = 0
+                with torch.no_grad():
+                    for val_ids, val_labs, val_mask in val_loader:
+                        val_ids = val_ids.to(args.device)
+                        val_labs = val_labs.to(args.device)
+                        val_mask = val_mask.to(args.device)
+                        with autocast_ctx:
+                            val_res = model(val_ids, labels=val_labs, attention_mask=val_mask)
+                        total_val_loss += (val_res.loss + val_res.aux_loss).item()
+                        val_steps += 1
+                        if val_steps >= 5:
+                            break
+                avg_val = total_val_loss / max(val_steps, 1)
+                import math as _math
+                val_ppl = _math.exp(avg_val)
+                Logger(f"  >>> Val Loss: {avg_val:.4f} | Val PPL: {val_ppl:.2f}")
+                if wandb:
+                    wandb.log({"val_loss": avg_val, "val_ppl": val_ppl})
+                model.train()
 
         if (step % args.save_interval == 0 or step == iters) and is_main_process():
             model.eval()
@@ -186,6 +210,19 @@ if __name__ == "__main__":
     # ====== 5. 模型、数据、优化器 ======
     model, tokenizer = init_model(lm_config, args.from_weight, device=args.device)
     train_ds = SFTDataset(args.data_path, tokenizer, max_length=args.max_seq_len)
+
+    # 9:1 分割训练/验证集
+    n_train = int(0.9 * len(train_ds))
+    n_val = len(train_ds) - n_train
+    val_loader = None
+    if n_val > 0:
+        train_ds, val_ds = torch.utils.data.random_split(train_ds, [n_train, n_val])
+        val_loader = DataLoader(
+            val_ds, batch_size=args.batch_size, shuffle=False,
+            num_workers=args.num_workers, pin_memory=True,
+        )
+        Logger(f"数据划分: train={n_train}, val={n_val}")
+
     train_sampler = DistributedSampler(train_ds) if dist.is_initialized() else None
     scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype == "float16"))
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
@@ -216,13 +253,13 @@ if __name__ == "__main__":
                 num_workers=args.num_workers, pin_memory=True,
             )
             Logger(f"Epoch [{epoch+1}/{args.epochs}]: skip {start_step} steps")
-            train_epoch(epoch, loader, len(loader) + start_step, start_step, wandb)
+            train_epoch(epoch, loader, len(loader) + start_step, start_step, wandb, val_loader)
         else:
             loader = DataLoader(
                 train_ds, batch_size=args.batch_size,
                 shuffle=(train_sampler is None), sampler=train_sampler,
                 num_workers=args.num_workers, pin_memory=True,
             )
-            train_epoch(epoch, loader, len(loader), 0, wandb)
+            train_epoch(epoch, loader, len(loader), 0, wandb, val_loader)
 
     Logger("SFT Training finished!")
