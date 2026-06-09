@@ -1,10 +1,9 @@
-# KorinMind — 从零制作的轻量级大语言模型
+# KorinMind — 轻量级大语言模型
 
-KorinMind 是一个从零使用 PyTorch 实现的 26M 参数中文大语言模型。包含完整的训练管线：预训练、SFT 微调、LoRA 低秩适配，以及消融实验和 Web 聊天 Demo。
+KorinMind 是一个使用 PyTorch 实现的 26M 参数中文大语言模型。包含完整的训练管线：预训练、SFT 微调、LoRA 低秩适配，以及消融实验和 Web 聊天 Demo。
 
 ## 项目特点
 
-- **完全从零手写**：不依赖 HuggingFace 的模型实现，Transformer 的每个组件都是自己写的
 - **现代架构**：RMSNorm / GQA / RoPE+YaRN / SwiGLU / MoE，与 Llama/Qwen 等主流模型对齐
 - **完整训练管线**：预训练 → SFT 微调 → LoRA 高效微调，支持断点续训和混合精度
 - **手写 LoRA**：不依赖 peft 库，从零实现低秩适配（权重文件仅 268KB）
